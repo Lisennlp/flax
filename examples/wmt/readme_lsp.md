@@ -1,9 +1,13 @@
 
 ### 安装环境
-    git clone git@github.com:Lisennlp/flax.git
-    cd flax
-    pip install -e .
-    pip install -r requirements.txt
+    - 使用我们的脚本创建tpu并安装环境
+    
+    - 补充库
+        pip uninstall flax
+        git clone git@github.com:Lisennlp/flax.git
+        cd flax
+        pip install -e .
+        pip install -r requirements.txt
 ### 下载训练集
 
     python -m tensorflow_datasets.scripts.download_and_prepare --datasets=wmt17_translate/de-en
