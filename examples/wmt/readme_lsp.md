@@ -17,8 +17,9 @@
     export TFDS_DATA_DIR=gs://jax_llm_data/dcformer_compare_experiments/
 
     FLAGS="--config.num_train_steps=100000 --config.warmup_steps=1000 --config.checkpoint_every_steps=1000"
-    
+    WOKRDIR=gs://jax_llm_data/dcformer_compare_experiments/logs/wmt_256/
+
     # default.py为配置文件
-    python3 main.py --workdir=logs/wmt_256/ --config=configs/default.py $FLAGS
+    python3 main.py --workdir=$WOKRDIR --config=configs/default.py $FLAGS
 
 
