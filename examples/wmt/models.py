@@ -426,7 +426,7 @@ class MultiHeadDotProductAttention(nn.Module):
         # our single query position should only attend to those key
         # positions that have already been generated and cached,
         # not the remaining zero elements.
-        mask = combine_masks(
+        mask = nn.combine_masks(
           mask,
           jnp.broadcast_to(
             jnp.arange(max_length) <= cur_index,
