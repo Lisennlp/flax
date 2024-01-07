@@ -523,7 +523,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   predict_config = train_config.replace(deterministic=True, decode=True)
 
   start_step = 0
-  rng = jax.random.key(config.seed)
+ # rng = jax.random.key(config.seed)
+  rng = jax.random.PRNGKey(config.seed)
   rng, init_rng = jax.random.split(rng)
   input_shape = (config.per_device_batch_size, config.max_target_length)
   target_shape = (config.per_device_batch_size, config.max_target_length)
@@ -557,7 +558,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
 
   # We access model params only via state.params
   del initial_variables
-
+  # 恢复训练
   if config.restore_checkpoints:
     # Restore unreplicated optimizer + model state from last checkpoint.
     state = checkpoints.restore_checkpoint(workdir, state)
@@ -622,6 +623,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
         periodic_actions.Profile(logdir=workdir, num_profile_steps=5),
     ]
   train_metrics = []
+  start_time = time.time()
   with metric_writers.ensure_flushes(writer):
     for step in range(start_step, config.num_train_steps):
       is_last_step = step == config.num_train_steps - 1
@@ -632,7 +634,18 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
             jax.tree_util.tree_map(np.asarray, next(train_iter))
         )
         state, metrics = p_train_step(state, batch, dropout_rng=dropout_rngs)
+        end_time = time.time()
+        
         train_metrics.append(metrics)
+        process_index = jax.process_index()
+        loss_sum = metrics['loss'][process_index]
+        right_sum = metrics['accuracy'][process_index]
+        weight_sum = metrics['denominator'][process_index]
+        
+        train_loss = loss_sum / weight_sum
+        train_acc = right_sum / weight_sum
+            
+        logging.info(f'step: {step} train_loss: {train_loss} train_acc: {train_acc} take: {end_time - start_time}')
 
       # Quick indication that training is happening.
       logging.log_first_n(logging.INFO, "Finished training step %d.", 5, step)
