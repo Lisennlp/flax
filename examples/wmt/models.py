@@ -26,7 +26,7 @@ from flax import linen as nn
 from flax import struct
 from flax.linen.normalization import LayerNorm
 from flax.linen.dtypes import promote_dtype
-from flax.linen.linear import PrecisionLike, default_kernel_init
+from flax.linen.linear import PrecisionLike, default_kernel_init, DenseGeneral
 
 from jax import lax
 import jax.numpy as jnp
@@ -183,33 +183,63 @@ class MultiHeadDotProductAttention(nn.Module):
 
   def setup(self):
     self.head_dim = self.qkv_features // self.num_heads
-    self.query_dense = nn.Dense(
-                  dtype=self.dtype,
-                  param_dtype=self.param_dtype,
-                  features=self.qkv_features,
-                  kernel_init=self.kernel_init,
-                  bias_init=self.bias_init,
-                  use_bias=self.use_bias,
-                  precision=self.precision,
-                )
-    self.key_dense = nn.Dense(
-                  dtype=self.dtype,
-                  param_dtype=self.param_dtype,
-                  features=self.qkv_features,
-                  kernel_init=self.kernel_init,
-                  bias_init=self.bias_init,
-                  use_bias=self.use_bias,
-                  precision=self.precision,
-                )
-    self.value_dense = nn.Dense(
-                  dtype=self.dtype,
-                  param_dtype=self.param_dtype,
-                  features=self.qkv_features,
-                  kernel_init=self.kernel_init,
-                  bias_init=self.bias_init,
-                  use_bias=self.use_bias,
-                  precision=self.precision,
-                )
+    # self.query_dense = nn.Dense(
+    #               dtype=self.dtype,
+    #               param_dtype=self.param_dtype,
+    #               features=self.qkv_features,
+    #               kernel_init=self.kernel_init,
+    #               bias_init=self.bias_init,
+    #               use_bias=self.use_bias,
+    #               precision=self.precision,
+    #             )
+    # self.key_dense = nn.Dense(
+    #               dtype=self.dtype,
+    #               param_dtype=self.param_dtype,
+    #               features=self.qkv_features,
+    #               kernel_init=self.kernel_init,
+    #               bias_init=self.bias_init,
+    #               use_bias=self.use_bias,
+    #               precision=self.precision,
+    #             )
+    # self.value_dense = nn.Dense(
+    #               dtype=self.dtype,
+    #               param_dtype=self.param_dtype,
+    #               features=self.qkv_features,
+    #               kernel_init=self.kernel_init,
+    #               bias_init=self.bias_init,
+    #               use_bias=self.use_bias,
+    #               precision=self.precision,
+    #             )
+    self.query_dense = DenseGeneral(
+                axis=-1,
+                dtype=self.dtype,
+                param_dtype=self.param_dtype,
+                features=(self.num_heads, self.head_dim),
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
+                use_bias=self.use_bias,
+                precision=self.precision,
+            )
+    self.key_dense = DenseGeneral(
+                axis=-1,
+                dtype=self.dtype,
+                param_dtype=self.param_dtype,
+                features=(self.num_heads, self.head_dim),
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
+                use_bias=self.use_bias,
+                precision=self.precision,
+            )
+    self.value_dense = DenseGeneral(
+                axis=-1,
+                dtype=self.dtype,
+                param_dtype=self.param_dtype,
+                features=(self.num_heads, self.head_dim),
+                kernel_init=self.kernel_init,
+                bias_init=self.bias_init,
+                use_bias=self.use_bias,
+                precision=self.precision,
+            )
     self.o_dense = nn.Dense(
                   dtype=self.dtype,
                   param_dtype=self.param_dtype,
@@ -361,7 +391,8 @@ class MultiHeadDotProductAttention(nn.Module):
           DeprecationWarning,
         )
     bsz, length, model_dim = inputs_q.shape
-    qkv_features = self.qkv_features or model_dim
+    # features = self.out_features or inputs_q.shape[-1]
+    qkv_features = self.qkv_features or inputs_q.shape[-1]
     assert qkv_features % self.num_heads == 0, (
       f'Memory dimension ({qkv_features}) must be divisible by number of'
       f' heads ({self.num_heads}).'
@@ -370,9 +401,9 @@ class MultiHeadDotProductAttention(nn.Module):
     query = self.query_dense(inputs_q)
     key = self.key_dense(inputs_k)
     value = self.value_dense(inputs_v)
-    query = query.reshape(bsz, length, self.num_heads, self.head_dim)
-    key = key.reshape(bsz, length, self.num_heads, self.head_dim)
-    value = value.reshape(bsz, length, self.num_heads, self.head_dim)
+    # query = query.reshape(bsz, length, self.num_heads, self.head_dim)
+    # key = key.reshape(bsz, length, self.num_heads, self.head_dim)
+    # value = value.reshape(bsz, length, self.num_heads, self.head_dim)
 
     if self.normalize_qk:
       # Normalizing query and key projections stabilizes training with higher
