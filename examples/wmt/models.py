@@ -20,13 +20,23 @@
 # pytype: disable=wrong-keyword-args
 # pytype: disable=attribute-error
 
-from typing import Callable, Any, Optional
-
+from typing import Any, Callable, Optional, Tuple, Union, overload
+import jax
 from flax import linen as nn
 from flax import struct
+from flax.linen.normalization import LayerNorm
+from flax.linen.dtypes import promote_dtype
+from flax.linen.linear import PrecisionLike, default_kernel_init
+
 from jax import lax
 import jax.numpy as jnp
 import numpy as np
+
+
+PRNGKey = jax.Array
+Shape = Tuple[int, ...]
+Dtype = Any
+Array = Any
 
 
 @struct.dataclass
@@ -154,6 +164,305 @@ class AddPositionEmbs(nn.Module):
       return inputs + jnp.take(pe[0], inputs_positions, axis=0)
 
 
+class MultiHeadDotProductAttention(nn.Module):
+  num_heads: int
+  dtype: Optional[Dtype] = None
+  param_dtype: Dtype = jnp.float32
+  qkv_features: Optional[int] = None
+  broadcast_dropout: bool = True
+  dropout_rate: float = 0.0
+  deterministic: Optional[bool] = None
+  precision: PrecisionLike = None
+  kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_kernel_init
+  bias_init: Callable[
+    [PRNGKey, Shape, Dtype], Array
+  ] = nn.zeros_init()
+  use_bias: bool = True
+  decode: bool = False
+  normalize_qk: bool = False
+
+  def setup(self):
+    self.head_dim = self.qkv_features // self.num_heads
+    self.query_dense = nn.Dense(
+                  dtype=self.dtype,
+                  param_dtype=self.param_dtype,
+                  features=self.qkv_features,
+                  kernel_init=self.kernel_init,
+                  bias_init=self.bias_init,
+                  use_bias=self.use_bias,
+                  precision=self.precision,
+                )
+    self.key_dense = nn.Dense(
+                  dtype=self.dtype,
+                  param_dtype=self.param_dtype,
+                  features=self.qkv_features,
+                  kernel_init=self.kernel_init,
+                  bias_init=self.bias_init,
+                  use_bias=self.use_bias,
+                  precision=self.precision,
+                )
+    self.value_dense = nn.Dense(
+                  dtype=self.dtype,
+                  param_dtype=self.param_dtype,
+                  features=self.qkv_features,
+                  kernel_init=self.kernel_init,
+                  bias_init=self.bias_init,
+                  use_bias=self.use_bias,
+                  precision=self.precision,
+                )
+    self.o_dense = nn.Dense(
+                  dtype=self.dtype,
+                  param_dtype=self.param_dtype,
+                  features=self.qkv_features,
+                  kernel_init=self.kernel_init,
+                  bias_init=self.bias_init,
+                  use_bias=self.use_bias,
+                  precision=self.precision,
+                )
+
+  def dot_product_attention(
+    self,
+    query: Array,
+    key: Array,
+    value: Array,
+    bias: Optional[Array] = None,
+    mask: Optional[Array] = None,
+    broadcast_dropout: bool = True,
+    dropout_rng: Optional[PRNGKey] = None,
+    dropout_rate: float = 0.0,
+    deterministic: bool = False,
+    dtype: Optional[Dtype] = None,
+    precision: PrecisionLike = None,
+    module: Optional[nn.Module] = None,
+  ):
+   # 所有参数转为dtype类型
+    query, key = promote_dtype(query, key, dtype=dtype)
+    dtype = query.dtype
+    assert query.ndim == key.ndim, 'q, k must have same rank.'
+    assert query.shape[:-3] == key.shape[:-3], 'q, k batch dims must match.'
+    assert query.shape[-2] == key.shape[-2], 'q, k num_heads must match.'
+    assert query.shape[-1] == key.shape[-1], 'q, k depths must match.'
+    # calculate attention matrix
+    depth = query.shape[-1]
+    query = query / jnp.sqrt(depth).astype(dtype)
+    # attn weight shape is (batch..., num_heads, q_length, kv_length)
+    attn_weights = jnp.einsum(
+      '...qhd,...khd->...hqk', query, key, precision=precision
+    )
+    # apply attention bias: masking, dropout, proximity bias, etc.
+    if bias is not None:
+      attn_weights = attn_weights + bias
+    # apply attention mask
+    if mask is not None:
+      big_neg = jnp.finfo(dtype).min
+      attn_weights = jnp.where(mask, attn_weights, big_neg)
+    # normalize the attention weights
+    attn_weights = jax.nn.softmax(attn_weights).astype(dtype)
+    if module:
+      module.sow('intermediates', 'attention_weights', attn_weights)
+    # apply attention dropout
+    if not deterministic and dropout_rate > 0.0:
+      keep_prob = 1.0 - dropout_rate
+      if broadcast_dropout:
+        # dropout is broadcast across the batch + head dimensions
+        dropout_shape = tuple([1] * (key.ndim - 2)) + attn_weights.shape[-2:]
+        keep = jax.random.bernoulli(dropout_rng, keep_prob, dropout_shape)  # type: ignore
+      else:
+        keep = jax.random.bernoulli(dropout_rng, keep_prob, attn_weights.shape)  # type: ignore
+      multiplier = keep.astype(dtype) / jnp.asarray(keep_prob, dtype=dtype)
+      attn_weights = attn_weights * multiplier
+
+    outputs = jnp.einsum(
+      '...hqk,...khd->...qhd', attn_weights, value, precision=precision
+    )
+    return outputs
+
+  @overload
+  def __call__(
+    self,
+    inputs_q: Array,
+    inputs_k: Optional[Array] = None,
+    inputs_v: Optional[Array] = None,
+    *,
+    mask: Optional[Array] = None,
+    deterministic: Optional[bool] = None,
+    dropout_rng: Optional[PRNGKey] = None,
+    sow_weights: bool = False,
+  ):
+    ...
+
+  @overload
+  def __call__(
+    self,
+    inputs_q: Array,
+    *,
+    inputs_kv: Array = None,
+    mask: Optional[Array] = None,
+    deterministic: Optional[bool] = None,
+    dropout_rng: Optional[PRNGKey] = None,
+    sow_weights: bool = False,
+  ):
+    ...
+
+  @nn.compact
+  def __call__(
+    self,
+    inputs_q: Array,
+    inputs_k: Optional[Array] = None,
+    inputs_v: Optional[Array] = None,
+    *,
+    inputs_kv: Optional[Array] = None,
+    mask: Optional[Array] = None,
+    deterministic: Optional[bool] = None,
+    dropout_rng: Optional[PRNGKey] = None,
+    sow_weights: bool = False,
+  ):
+    if inputs_kv is not None:
+      if inputs_k is not None or inputs_v is not None:
+        raise ValueError(
+          'If either `inputs_k` or `inputs_v` is not None, '
+          '`inputs_kv` must be None. If `inputs_kv` is not None, both `inputs_k` '
+          'and `inputs_v` must be None. We recommend using `inputs_k` and '
+          '`inputs_v` args, since `inputs_kv` will be deprecated soon. See '
+          'https://github.com/google/flax/discussions/3389 for more '
+          'information.'
+        )
+      inputs_k = inputs_v = inputs_kv
+      warnings.warn(
+        'The inputs_kv arg will be deprecated soon. '
+        'Use inputs_k and inputs_v instead. See '
+        'https://github.com/google/flax/discussions/3389 '
+        'for more information.',
+        DeprecationWarning,
+      )
+    else:
+      if inputs_k is None:
+        if inputs_v is not None:
+          raise ValueError(
+            '`inputs_k` cannot be None if `inputs_v` is not None. '
+            'To have both `inputs_k` and `inputs_v` be the same value, pass in the '
+            'value to `inputs_k` and leave `inputs_v` as None.'
+          )
+        inputs_k = inputs_q
+      if inputs_v is None:
+        inputs_v = inputs_k
+      elif inputs_v.shape[-1] == inputs_v.shape[-2]:
+        warnings.warn(
+          f'You are passing an array of shape {inputs_v.shape} '
+          'to the `inputs_v` arg, when you may have intended '
+          'to pass it to the `mask` arg. As of Flax version '
+          '0.7.4, the function signature of '
+          "MultiHeadDotProductAttention's `__call__` method "
+          'has changed to `__call__(inputs_q, inputs_k=None, '
+          'inputs_v=None, *, inputs_kv=None, mask=None, '
+          'deterministic=None)`. Use the kwarg `mask` instead. '
+          'See https://github.com/google/flax/discussions/3389 '
+          'and read the docstring for more information.',
+          DeprecationWarning,
+        )
+    bsz, length, model_dim = inputs_q.shape
+    qkv_features = self.qkv_features or model_dim
+    assert qkv_features % self.num_heads == 0, (
+      f'Memory dimension ({qkv_features}) must be divisible by number of'
+      f' heads ({self.num_heads}).'
+    )
+    # dimensions are then [batch..., length, n_heads, n_features_per_head]
+    query = self.query_dense(inputs_q)
+    key = self.key_dense(inputs_k)
+    value = self.value_dense(inputs_v)
+    query = query.reshape(bsz, length, self.num_heads, self.head_dim)
+    key = key.reshape(bsz, length, self.num_heads, self.head_dim)
+    value = value.reshape(bsz, length, self.num_heads, self.head_dim)
+
+    if self.normalize_qk:
+      # Normalizing query and key projections stabilizes training with higher
+      # LR. See ViT-22B paper http://arxiv.org/abs/2302.05442 for analysis.
+      query = LayerNorm(name='query_ln', use_bias=False)(query)  # type: ignore[call-arg]
+      key = LayerNorm(name='key_ln', use_bias=False)(key)  # type: ignore[call-arg]
+
+    # During fast autoregressive decoding, we feed one position at a time,
+    # and cache the keys and values step by step.
+    if self.decode:
+      # detect if we're initializing by absence of existing cache data.
+      is_initialized = self.has_variable('cache', 'cached_key')
+      cached_key = self.variable(
+        'cache', 'cached_key', jnp.zeros, key.shape, key.dtype
+      )
+      cached_value = self.variable(
+        'cache', 'cached_value', jnp.zeros, value.shape, value.dtype
+      )
+      cache_index = self.variable(
+        'cache', 'cache_index', lambda: jnp.array(0, dtype=jnp.int32)
+      )
+      if is_initialized:
+        (
+          *batch_dims,
+          max_length,
+          num_heads,
+          depth_per_head,
+        ) = cached_key.value.shape
+        # shape check of cached keys against query input
+        expected_shape = tuple(batch_dims) + (1, num_heads, depth_per_head)
+        if expected_shape != query.shape:
+          raise ValueError(
+            'Autoregressive cache shape error, '
+            'expected query shape %s instead got %s.'
+            % (expected_shape, query.shape)
+          )
+        # update key, value caches with our new 1d spatial slices
+        cur_index = cache_index.value
+        zero = jnp.array(0, dtype=lax.dtype(cur_index.dtype))
+        indices: tuple[Union[int, jax.Array], ...] = (zero,) * len(batch_dims) + (
+          cur_index,
+          zero,
+          zero,
+        )
+        key = lax.dynamic_update_slice(cached_key.value, key, indices)
+        value = lax.dynamic_update_slice(cached_value.value, value, indices)
+        cached_key.value = key
+        cached_value.value = value
+        cache_index.value = cache_index.value + 1
+        # causal mask for cached decoder self-attention:
+        # our single query position should only attend to those key
+        # positions that have already been generated and cached,
+        # not the remaining zero elements.
+        mask = combine_masks(
+          mask,
+          jnp.broadcast_to(
+            jnp.arange(max_length) <= cur_index,
+            tuple(batch_dims) + (1, 1, max_length),
+          ),
+        )
+
+    if (
+      self.dropout_rate > 0.0
+    ):  # Require `deterministic` only if using dropout.
+      m_deterministic = nn.merge_param(
+        'deterministic', self.deterministic, deterministic
+      )
+      if not m_deterministic and dropout_rng is None:
+        dropout_rng = self.make_rng('dropout')
+    else:
+      m_deterministic = True
+    # bsz * lenght * n * head_dim
+    x = self.dot_product_attention(
+        query,
+        key,
+        value,
+        mask=mask,
+        dropout_rng=dropout_rng,
+        dropout_rate=self.dropout_rate,
+        broadcast_dropout=self.broadcast_dropout,
+        deterministic=m_deterministic,
+        dtype=self.dtype,
+        precision=self.precision,
+        module=self if sow_weights else None,
+      )  # pytype: disable=wrong-keyword-args
+    x = x.reshape(bsz, length, -1)
+    out = self.o_dense(x)
+    return out
+
+
 class MlpBlock(nn.Module):
   """Transformer MLP / feed-forward block.
 
@@ -199,7 +508,28 @@ class Encoder1DBlock(nn.Module):
     config: TransformerConfig dataclass containing hyperparameters.
   """
 
-  config: TransformerConfig
+  config: TransformerConfig = None
+
+  def setup(self):
+    config = self.config
+    self.pre_norm = nn.LayerNorm(dtype=config.dtype)
+
+    self.dot_attn = MultiHeadDotProductAttention(
+        num_heads=config.num_heads,
+        dtype=config.dtype,
+        qkv_features=config.qkv_dim,
+        kernel_init=config.kernel_init,
+        bias_init=config.bias_init,
+        use_bias=False,
+        broadcast_dropout=False,
+        dropout_rate=config.attention_dropout_rate,
+        deterministic=config.deterministic,
+    )
+    self.dropout = nn.Dropout(rate=config.dropout_rate)
+    self.post_norm = nn.LayerNorm(dtype=self.config.dtype)
+
+    self.mlp = MlpBlock(config=self.config)
+    
 
   @nn.compact
   def __call__(self, inputs, encoder_mask=None):
@@ -212,31 +542,16 @@ class Encoder1DBlock(nn.Module):
     Returns:
       output after transformer encoder block.
     """
-    config = self.config
-
     # Attention block.
     assert inputs.ndim == 3
-    x = nn.LayerNorm(dtype=config.dtype)(inputs)
-    x = nn.MultiHeadDotProductAttention(
-        num_heads=config.num_heads,
-        dtype=config.dtype,
-        qkv_features=config.qkv_dim,
-        kernel_init=config.kernel_init,
-        bias_init=config.bias_init,
-        use_bias=False,
-        broadcast_dropout=False,
-        dropout_rate=config.attention_dropout_rate,
-        deterministic=config.deterministic,
-    )(x, mask=encoder_mask)
-
-    x = nn.Dropout(rate=config.dropout_rate)(
-        x, deterministic=config.deterministic
-    )
+    x = self.pre_norm(inputs)
+    x = self.dot_attn(x, mask=encoder_mask)
+    x = self.dropout(x, deterministic=self.config.deterministic)
     x = x + inputs
 
     # MLP block.
-    y = nn.LayerNorm(dtype=config.dtype)(x)
-    y = MlpBlock(config=config)(y)
+    y = self.post_norm(x)
+    y = self.mlp(y)
 
     return x + y
 
@@ -250,6 +565,40 @@ class EncoderDecoder1DBlock(nn.Module):
 
   config: TransformerConfig
 
+  def setup(self):
+    config = self.config
+    self.pre_decoder_norm = nn.LayerNorm(dtype=config.dtype)
+    self.decoder_dot_attn = MultiHeadDotProductAttention(
+        num_heads=config.num_heads,
+        dtype=config.dtype,
+        qkv_features=config.qkv_dim,
+        kernel_init=config.kernel_init,
+        bias_init=config.bias_init,
+        use_bias=False,
+        broadcast_dropout=False,
+        dropout_rate=config.attention_dropout_rate,
+        deterministic=config.deterministic,
+        decode=config.decode,
+    )
+
+    self.encoder_decoder_dot_attn = MultiHeadDotProductAttention(
+        num_heads=config.num_heads,
+        dtype=config.dtype,
+        qkv_features=config.qkv_dim,
+        kernel_init=config.kernel_init,
+        bias_init=config.bias_init,
+        use_bias=False,
+        broadcast_dropout=False,
+        dropout_rate=config.attention_dropout_rate,
+        deterministic=config.deterministic,
+    )
+
+    self.dropout = nn.Dropout(rate=config.dropout_rate)
+    self.pre_endocer_decoder_norm = nn.LayerNorm(dtype=config.dtype)
+
+    self.pre_mlp_norm = nn.LayerNorm(dtype=config.dtype)
+    self.mlp = MlpBlock(config=config)
+     
   @nn.compact
   def __call__(
       self, targets, encoded, decoder_mask=None, encoder_decoder_mask=None
@@ -266,49 +615,22 @@ class EncoderDecoder1DBlock(nn.Module):
       output after transformer encoder-decoder block.
     """
     config = self.config
-
     # Decoder block.
     assert targets.ndim == 3
-    x = nn.LayerNorm(dtype=config.dtype)(targets)
-    x = nn.MultiHeadDotProductAttention(
-        num_heads=config.num_heads,
-        dtype=config.dtype,
-        qkv_features=config.qkv_dim,
-        kernel_init=config.kernel_init,
-        bias_init=config.bias_init,
-        use_bias=False,
-        broadcast_dropout=False,
-        dropout_rate=config.attention_dropout_rate,
-        deterministic=config.deterministic,
-        decode=config.decode,
-    )(x, mask=decoder_mask)
-    x = nn.Dropout(rate=config.dropout_rate)(
-        x, deterministic=config.deterministic
-    )
+    x = self.pre_decoder_norm(targets)
+    x = self.decoder_dot_attn(x, mask=decoder_mask)
+    x = self.dropout(x, deterministic=config.deterministic)
     x = x + targets
 
     # Encoder-Decoder block.
-    y = nn.LayerNorm(dtype=config.dtype)(x)
-    y = nn.MultiHeadDotProductAttention(
-        num_heads=config.num_heads,
-        dtype=config.dtype,
-        qkv_features=config.qkv_dim,
-        kernel_init=config.kernel_init,
-        bias_init=config.bias_init,
-        use_bias=False,
-        broadcast_dropout=False,
-        dropout_rate=config.attention_dropout_rate,
-        deterministic=config.deterministic,
-    )(y, encoded, mask=encoder_decoder_mask)
-
-    y = nn.Dropout(rate=config.dropout_rate)(
-        y, deterministic=config.deterministic
-    )
+    y = self.pre_endocer_decoder_norm(x)
+    y = self.encoder_decoder_dot_attn(y, encoded, mask=encoder_decoder_mask)
+    y = self.dropout(y, deterministic=config.deterministic)
     y = y + x
 
     # MLP block.
-    z = nn.LayerNorm(dtype=config.dtype)(y)
-    z = MlpBlock(config=config)(z)
+    z = self.pre_mlp_norm(y)
+    z = self.mlp(z)
 
     return y + z
 
@@ -324,6 +646,21 @@ class Encoder(nn.Module):
   config: TransformerConfig
   shared_embedding: Any = None
 
+  def setup(self):
+    if self.shared_embedding is None:
+      self.input_embed = nn.Embed(
+          num_embeddings=self.config.vocab_size,
+          features=self.config.emb_dim,
+          embedding_init=nn.initializers.normal(stddev=1.0),
+      )
+    else:
+      self.input_embed = self.shared_embedding
+
+    self.position_embedding = AddPositionEmbs(config=self.config, decode=False, name='posembed_input')
+    self.net = [Encoder1DBlock(config=self.config, name=f'encoderblock_{lyr}') for lyr in range(self.config.num_layers)]
+    self.dropout = nn.Dropout(rate=self.config.dropout_rate)
+    self.final_ln = nn.LayerNorm(dtype=self.config.dtype, name='encoder_norm')
+
   @nn.compact
   def __call__(self, inputs, inputs_positions=None, encoder_mask=None):
     """Applies Transformer model on the inputs.
@@ -338,34 +675,19 @@ class Encoder(nn.Module):
     """
     config = self.config
     assert inputs.ndim == 2  # (batch, len)
-
-    # Input Embedding
-    if self.shared_embedding is None:
-      input_embed = nn.Embed(
-          num_embeddings=config.vocab_size,
-          features=config.emb_dim,
-          embedding_init=nn.initializers.normal(stddev=1.0),
-      )
-    else:
-      input_embed = self.shared_embedding
     x = inputs.astype('int32')
-    x = input_embed(x)
-    x = AddPositionEmbs(config=config, decode=False, name='posembed_input')(
-        x, inputs_positions=inputs_positions
-    )
-    x = nn.Dropout(rate=config.dropout_rate)(
-        x, deterministic=config.deterministic
-    )
-
+    # word embedding
+    x = self.input_embed(x)
+    # position embedding
+    x = self.position_embedding(x, inputs_positions=inputs_positions)
+    x = self.dropout(x, deterministic=config.deterministic)
     x = x.astype(config.dtype)
 
     # Input Encoder
     for lyr in range(config.num_layers):
-      x = Encoder1DBlock(config=config, name=f'encoderblock_{lyr}')(
-          x, encoder_mask
-      )
+      x = self.net[lyr](x, encoder_mask)
 
-    encoded = nn.LayerNorm(dtype=config.dtype, name='encoder_norm')(x)
+    encoded = self.final_ln(x)
 
     return encoded
 
@@ -381,6 +703,30 @@ class Decoder(nn.Module):
   config: TransformerConfig
   shared_embedding: Any = None
 
+  def setup(self):
+    config = self.config
+    if self.shared_embedding is None:
+      self.output_embed = nn.Embed(
+          num_embeddings=config.output_vocab_size,
+          features=config.emb_dim,
+          embedding_init=nn.initializers.normal(stddev=1.0),
+      )
+    else:
+      self.output_embed = self.shared_embedding
+
+    self.position_embedding = AddPositionEmbs(config=config, decode=config.decode, name='posembed_output')
+    self.dropout = nn.Dropout(rate=self.config.dropout_rate)
+    self.net = [EncoderDecoder1DBlock(config=config, name=f'encoderdecoderblock_{lyr}') for lyr in range(self.config.num_layers)]
+    self.final_ln = nn.LayerNorm(dtype=config.dtype, name='encoderdecoder_norm')
+
+    self.lm_head = nn.Dense(
+          config.output_vocab_size,
+          dtype=config.dtype,
+          kernel_init=config.kernel_init,
+          bias_init=config.bias_init,
+          name='logitdense',
+      )
+    
   @nn.compact
   def __call__(
       self,
@@ -407,55 +753,29 @@ class Decoder(nn.Module):
     assert encoded.ndim == 3  # (batch, len, depth)
     assert targets.ndim == 2  # (batch, len)
 
-    # Target Embedding
-    if self.shared_embedding is None:
-      output_embed = nn.Embed(
-          num_embeddings=config.output_vocab_size,
-          features=config.emb_dim,
-          embedding_init=nn.initializers.normal(stddev=1.0),
-      )
-    else:
-      output_embed = self.shared_embedding
-
     y = targets.astype('int32')
     if not config.decode:
       y = shift_right(y)
-    y = output_embed(y)
-    y = AddPositionEmbs(
-        config=config, decode=config.decode, name='posembed_output'
-    )(y, inputs_positions=targets_positions)
-    y = nn.Dropout(rate=config.dropout_rate)(
-        y, deterministic=config.deterministic
-    )
+    y = self.output_embed(y)
+    y = self.position_embedding(y, inputs_positions=targets_positions)
+    y = self.dropout(y, deterministic=config.deterministic)
 
     y = y.astype(config.dtype)
 
     # Target-Input Decoder
     for lyr in range(config.num_layers):
-      y = EncoderDecoder1DBlock(
-          config=config, name=f'encoderdecoderblock_{lyr}'
-      )(
-          y,
-          encoded,
-          decoder_mask=decoder_mask,
-          encoder_decoder_mask=encoder_decoder_mask,
-      )
-    y = nn.LayerNorm(dtype=config.dtype, name='encoderdecoder_norm')(y)
+      y = self.net[lyr](y, encoded, decoder_mask=decoder_mask, encoder_decoder_mask=encoder_decoder_mask)
 
-    # Decoded Logits
+    y = self.final_ln(y)
+
+    # Decoded Logits, True
     if config.logits_via_embedding:
       # Use the transpose of embedding matrix for logit transform.
-      logits = output_embed.attend(y.astype(jnp.float32))
+      logits = self.output_embed.attend(y.astype(jnp.float32))
       # Correctly normalize pre-softmax logits for this shared case.
       logits = logits / jnp.sqrt(y.shape[-1])
     else:
-      logits = nn.Dense(
-          config.output_vocab_size,
-          dtype=config.dtype,
-          kernel_init=config.kernel_init,
-          bias_init=config.bias_init,
-          name='logitdense',
-      )(y)
+      logits = self.lm_head(y)
     return logits
 
 

@@ -23,6 +23,7 @@ This script trains a Transformer on a WMT dataset.
 import collections
 import functools
 import os
+import time
 
 from absl import logging
 from clu import metric_writers
@@ -523,6 +524,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   predict_config = train_config.replace(deterministic=True, decode=True)
 
   start_step = 0
+  # lsp
  # rng = jax.random.key(config.seed)
   rng = jax.random.PRNGKey(config.seed)
   rng, init_rng = jax.random.split(rng)
@@ -634,18 +636,17 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
             jax.tree_util.tree_map(np.asarray, next(train_iter))
         )
         state, metrics = p_train_step(state, batch, dropout_rng=dropout_rngs)
-        end_time = time.time()
-        
         train_metrics.append(metrics)
+
+        # lsp
+        end_time = time.time()
         process_index = jax.process_index()
         loss_sum = metrics['loss'][process_index]
         right_sum = metrics['accuracy'][process_index]
         weight_sum = metrics['denominator'][process_index]
-        
         train_loss = loss_sum / weight_sum
         train_acc = right_sum / weight_sum
-            
-        logging.info(f'step: {step} train_loss: {train_loss} train_acc: {train_acc} take: {end_time - start_time}')
+        logging.info(f'step: {step} train_loss: {train_loss:.4f} train_acc: {train_acc:.4f} take: {end_time - start_time:.4f}s')
 
       # Quick indication that training is happening.
       logging.log_first_n(logging.INFO, "Finished training step %d.", 5, step)
