@@ -15,7 +15,10 @@
 ### 训练
     # dcformer_compare_experiments包含wmt17_translate和wmt14_translate两个文件夹
     export TFDS_DATA_DIR=gs://jax_llm_data/dcformer_compare_experiments/
+
     FLAGS="--config.num_train_steps=100000 --config.warmup_steps=1000 --config.checkpoint_every_steps=1000"
+    
+    # default.py为配置文件
     python3 main.py --workdir=logs/wmt_256/ --config=configs/default.py $FLAGS
 
 
