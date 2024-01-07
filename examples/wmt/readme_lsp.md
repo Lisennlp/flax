@@ -7,6 +7,7 @@
         git clone git@github.com:Lisennlp/flax.git
         cd flax
         pip install -e .
+        cd examples/wmt/
         pip install -r requirements.txt
 ### 下载训练集
 
