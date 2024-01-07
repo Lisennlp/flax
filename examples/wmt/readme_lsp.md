@@ -21,10 +21,18 @@
     # dcformer_compare_experiments包含wmt17_translate和wmt14_translate两个文件夹
     export TFDS_DATA_DIR=gs://jax_llm_data/dcformer_compare_experiments/
 
-    FLAGS="--config.num_train_steps=100000 --config.warmup_steps=1000 --config.checkpoint_every_steps=1000"
+    # per_device_batch_size表示每台机器的batch_size
+    FLAGS="--config.num_train_steps=100000 --config.warmup_steps=1000 --config.checkpoint_every_steps=1000 --config.per_device_batch_size=32"
     WOKRDIR=gs://jax_llm_data/dcformer_compare_experiments/logs/wmt_256/
 
     # default.py为配置文件
-    python3 main.py --workdir=$WOKRDIR --config=configs/default.py $FLAGS
+    # v3-8
+    TPU_NAME=llm-jax-v3-8-10
+    ZONE=us-east1-d
+    gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="/home/lishengping/miniconda3/bin/python main.py --workdir=$WOKRDIR --config=configs/default.py $FLAGS"
 
+    # v3-32
+    TPU_NAME=llm-jax-v3-32-10
+    ZONE=us-east1-d
+    gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="/home/lishengping/miniconda3/bin/python main.py --workdir=$WOKRDIR --config=configs/default.py $FLAGS"
 
