@@ -23,7 +23,7 @@
 
     # per_device_batch_size表示每台机器的batch_size
     FLAGS="--config.num_train_steps=100000 --config.warmup_steps=1000 --config.checkpoint_every_steps=1000 --config.per_device_batch_size=32"
-    WOKRDIR=gs://jax_llm_data/dcformer_compare_experiments/logs_ori/wmt_256/
+    WOKRDIR=gs://jax_llm_data/dcformer_compare_experiments/logs_self/wmt_256/
 
     # default.py为配置文件
     # v3-8

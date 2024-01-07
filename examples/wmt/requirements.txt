@@ -1,5 +1,5 @@
 -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-jax[cpu]==0.4.19
+jax[tpu]==0.4.19
 # orbax-checkpoint==0.4.8
 # ml-collections==0.1.0
 # numpy==1.22.0
