@@ -709,6 +709,7 @@ class Encoder1DBlock(nn.Module):
         broadcast_dropout=False,
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
+        dynamic_compose=config.en_dynamic_compose
     )
     self.dropout = nn.Dropout(rate=config.dropout_rate)
     self.post_norm = nn.LayerNorm(dtype=self.config.dtype)
@@ -764,6 +765,7 @@ class EncoderDecoder1DBlock(nn.Module):
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
         decode=config.decode,
+        dynamic_compose=config.de_dynamic_compose1 # # True
     )
 
     self.encoder_decoder_dot_attn = MultiHeadDotProductAttention(
@@ -777,6 +779,7 @@ class EncoderDecoder1DBlock(nn.Module):
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
         is_cross_attention=True,  # XD
+        dynamic_compose=config.de_dynamic_compose2 # True
     )
 
     self.dropout = nn.Dropout(rate=config.dropout_rate)
