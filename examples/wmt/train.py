@@ -524,6 +524,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       de_dynamic_compose1=config.de_dynamic_compose1,
       de_dynamic_compose2=config.de_dynamic_compose2,
   )
+  print(f'train_config: {train_config}')
   eval_config = train_config.replace(deterministic=True)
   predict_config = train_config.replace(deterministic=True, decode=True)
 
