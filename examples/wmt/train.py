@@ -705,7 +705,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       save_checkpoint = (
           step % config.checkpoint_every_steps == 0 or is_last_step
       )
-      if config.save_checkpoints and save_checkpoint:
+      if step !=0 and config.save_checkpoints and save_checkpoint:
         logging.info("Saving checkpoint step %d.", step)
         with report_progress.timed("checkpoint"):
           checkpoints.save_checkpoint_multiprocess(
