@@ -191,7 +191,7 @@ class DynamicWeightProjection(nn.Module):
   merge_dynamic_w_hidden: bool = False
   # dw_hidden_activation_cls: activations_lib.BaseActivation = None  # mqy
   deterministic: bool = False
-  dynamic_dropout_rate: float = None
+  dynamic_dropout_rate: Optional[float] = None
 
   def setup(self) -> None:
     self.num_heads_per_group = self.num_heads // self.num_groups
