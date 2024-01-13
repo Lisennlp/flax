@@ -112,11 +112,11 @@ def get_config():
 
   # Integer for PRNG random seed.
   config.seed = 0
-  
+
   # dcformer
-  en_dynamic_compose = False
-  de_dynamic_compose1 = False
-  de_dynamic_compose2 = False
+  config.en_dynamic_compose = False
+  config.de_dynamic_compose1 = False
+  config.de_dynamic_compose2 = False
 
   return config
 

@@ -61,7 +61,7 @@ def main(argv):
   platform.work_unit().create_artifact(
       platform.ArtifactType.DIRECTORY, FLAGS.workdir, 'workdir'
   )
-
+  print(f'FLAGS.config: {FLAGS.config}')
   train.train_and_evaluate(FLAGS.config, FLAGS.workdir)
 
 
