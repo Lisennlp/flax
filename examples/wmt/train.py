@@ -438,7 +438,8 @@ def translate_and_calculate_bleu(
   )
 
   # Calculate BLEU score for translated eval corpus against reference.
-  bleu_matches = bleu.bleu_partial(references, predictions)
+  # lsp
+  bleu_matches = bleu.bleu_partial(references, predictions, case_sensitive=True)
   all_bleu_matches = per_host_sum_pmap(bleu_matches)
   bleu_score = bleu.complete_bleu(*all_bleu_matches)
   # Save translation samples for tensorboard.
@@ -707,5 +708,5 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
         logging.info("Saving checkpoint step %d.", step)
         with report_progress.timed("checkpoint"):
           checkpoints.save_checkpoint_multiprocess(
-              workdir, jax_utils.unreplicate(state), step
+              workdir, jax_utils.unreplicate(state), step, keep=40
           )
