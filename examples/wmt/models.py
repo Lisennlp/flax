@@ -67,6 +67,7 @@ class TransformerConfig:
   en_dynamic_compose: bool = False
   de_dynamic_compose1: bool = False
   de_dynamic_compose2: bool = False
+  dynamic_dropout_rate: float = None
 
 def shift_right(x, axis=1):
   """Shift the input to the right by padding on axis 1."""
@@ -224,9 +225,10 @@ class DynamicWeightProjection(nn.Module):
     self.dw1_norm = nn.RMSNorm(use_scale=False, **{k: v for k, v in kwargs.items() if k not in ['use_bias', 'precision']})
 
   def __call__(self, query_vec):
+    print(f'dynamic_dropout_rate: {self.dynamic_dropout_rate}')
     if self.n_splits == 2:
       dw_hidden = self.dw_hidden_activation(self.dw1(query_vec))   # BTG2,64
-      if self.dynamic_dropout_rate:
+      if self.dynamic_dropout_rate is not None:
         dw_hidden = nn.Dropout(self.dynamic_dropout_rate)(dw_hidden, deterministic=self.deterministic)  # XD may add
       # w1, w2 = jnp.split(self.qkw(dw_hidden), 2, axis=-2)
       w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, self.qkw), 2, axis=-2)
