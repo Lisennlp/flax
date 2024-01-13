@@ -654,7 +654,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
         weight_sum = metrics['denominator'][process_index]
         train_loss = loss_sum / weight_sum
         train_acc = right_sum / weight_sum
-        logging.info(f'step: {step} train_loss: {train_loss:.4f} train_acc: {train_acc:.4f} take: {end_time - start_time:.4f}s')
+        if step % 10 == 0:
+          logging.info(f'step: {step} train_loss: {train_loss:.4f} train_acc: {train_acc:.4f} take: {end_time - start_time:.4f}s')
 
       # Quick indication that training is happening.
       logging.log_first_n(logging.INFO, "Finished training step %d.", 5, step)
