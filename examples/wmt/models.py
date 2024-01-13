@@ -224,12 +224,15 @@ class DynamicWeightProjection(nn.Module):
     self.dw_activation = nn.tanh
     self.dw1_norm = nn.RMSNorm(use_scale=False, **{k: v for k, v in kwargs.items() if k not in ['use_bias', 'precision']})
 
+    if self.dynamic_dropout_rate is not None:
+      self.dropout = nn.Dropout(self.dynamic_dropout_rate)
+
   def __call__(self, query_vec):
     print(f'dynamic_dropout_rate: {self.dynamic_dropout_rate}')
     if self.n_splits == 2:
       dw_hidden = self.dw_hidden_activation(self.dw1(query_vec))   # BTG2,64
       if self.dynamic_dropout_rate is not None:
-        dw_hidden = nn.Dropout(self.dynamic_dropout_rate)(dw_hidden, deterministic=self.deterministic)  # XD may add
+        dw_hidden = self.dropout(dw_hidden, deterministic=self.deterministic)  # XD may add
       # w1, w2 = jnp.split(self.qkw(dw_hidden), 2, axis=-2)
       w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, self.qkw), 2, axis=-2)
       w1 = self.dw1_norm(w1)
@@ -240,7 +243,7 @@ class DynamicWeightProjection(nn.Module):
       dd = self.dd(query_vec) # jnp.einsum('BTD,DGM->BTGM', query_vec, theta.dd)
       dd = self.dw_activation(dd)
       if self.dynamic_dropout_rate is not None:
-        dd = nn.Dropout(self.dynamic_dropout_rate)(dd, deterministic=self.deterministic)  # XD may add
+        dd = self.dropout(dd, deterministic=self.deterministic)  # XD may add
       pre_dd, post_dd = jnp.split(dd, 2, axis=-1)
       return (pre_w1, pre_w2, pre_dd), (post_w1, post_w2, post_dd)
     else:
@@ -248,7 +251,7 @@ class DynamicWeightProjection(nn.Module):
       # w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, theta.qkw), 2, axis=-2)
       dw_hidden = self.dw_hidden_activation(self.dw1(query_vec))
       if self.dynamic_dropout_rate is not None:
-        dw_hidden = nn.Dropout(self.dynamic_dropout_rate)(dw_hidden, deterministic=self.deterministic)  # XD may add
+        dw_hidden = self.dropout(dw_hidden, deterministic=self.deterministic)  # XD may add
       # w1, w2 = jnp.split(self.qkw(dw_hidden), 2, axis=-2)
       w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, self.qkw), 2, axis=-2)
       w1 = self.dw1_norm(w1)
@@ -259,7 +262,7 @@ class DynamicWeightProjection(nn.Module):
       dd = self.dd(query_vec) # jnp.einsum('BTD,DGM->BTGM', query_vec, theta.dd)
       dd = self.dw_activation(dd)
       if self.dynamic_dropout_rate is not None:
-        dd = nn.Dropout(dynamic_dropout_rate)(dd, deterministic=self.deterministic)  # XD may add
+        dd = self.dropout(dd, deterministic=self.deterministic)  # XD may add
       pre_qdd, pre_kdd, post_qdd, post_kdd = jnp.split(dd, 4, axis=-1)
       return (pre_qw1, pre_qw2, pre_kw1, pre_kw2, pre_qdd, pre_kdd), \
         (post_qw1, post_qw2, post_kw1, post_kw2, post_qdd, post_kdd)
