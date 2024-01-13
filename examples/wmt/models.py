@@ -189,6 +189,8 @@ class DynamicWeightProjection(nn.Module):
   # dynamic_d_hidden_dim: int = None
   merge_dynamic_w_hidden: bool = False
   # dw_hidden_activation_cls: activations_lib.BaseActivation = None  # mqy
+  deterministic: bool = False
+  dynamic_dropout_rate: float = None
 
   def setup(self) -> None:
     self.num_heads_per_group = self.num_heads // self.num_groups
@@ -224,28 +226,38 @@ class DynamicWeightProjection(nn.Module):
   def __call__(self, query_vec):
     if self.n_splits == 2:
       dw_hidden = self.dw_hidden_activation(self.dw1(query_vec))   # BTG2,64
+      if self.dynamic_dropout_rate:
+        dw_hidden = nn.Dropout(self.dynamic_dropout_rate)(dw_hidden, deterministic=self.deterministic)  # XD may add
       # w1, w2 = jnp.split(self.qkw(dw_hidden), 2, axis=-2)
       w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, self.qkw), 2, axis=-2)
       w1 = self.dw1_norm(w1)
+      # w2 = self.dw_activation(w2)
       pre_w1, post_w1 = unbind(w1, 2, axis=3) # BTG2IM->[BTGIM]*2
       pre_w2, post_w2 = unbind(w2, 2, axis=3)
 
       dd = self.dd(query_vec) # jnp.einsum('BTD,DGM->BTGM', query_vec, theta.dd)
       dd = self.dw_activation(dd)
+      if self.dynamic_dropout_rate is not None:
+        dd = nn.Dropout(self.dynamic_dropout_rate)(dd, deterministic=self.deterministic)  # XD may add
       pre_dd, post_dd = jnp.split(dd, 2, axis=-1)
       return (pre_w1, pre_w2, pre_dd), (post_w1, post_w2, post_dd)
     else:
       # dw_hidden = jnp.einsum('BTD,DGCK->BTGCK', query_vec, theta.dw1)  # C=4 [pre,post]*[query,key]
       # w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, theta.qkw), 2, axis=-2)
       dw_hidden = self.dw_hidden_activation(self.dw1(query_vec))
+      if self.dynamic_dropout_rate is not None:
+        dw_hidden = nn.Dropout(self.dynamic_dropout_rate)(dw_hidden, deterministic=self.deterministic)  # XD may add
       # w1, w2 = jnp.split(self.qkw(dw_hidden), 2, axis=-2)
       w1, w2 = jnp.split(jnp.einsum('BTGCK,GCKIM->BTGCIM', dw_hidden, self.qkw), 2, axis=-2)
       w1 = self.dw1_norm(w1)
+      # w2 = self.dw_activation(w2)
       pre_qw1, pre_kw1, post_qw1, post_kw1 = unbind(w1, 4, axis=3) # BTG4IM->[BTGIM]*4
       pre_qw2, pre_kw2, post_qw2, post_kw2 = unbind(w2, 4, axis=3)
 
       dd = self.dd(query_vec) # jnp.einsum('BTD,DGM->BTGM', query_vec, theta.dd)
       dd = self.dw_activation(dd)
+      if self.dynamic_dropout_rate is not None:
+        dd = nn.Dropout(dynamic_dropout_rate)(dd, deterministic=self.deterministic)  # XD may add
       pre_qdd, pre_kdd, post_qdd, post_kdd = jnp.split(dd, 4, axis=-1)
       return (pre_qw1, pre_qw2, pre_kw1, pre_kw2, pre_qdd, pre_kdd), \
         (post_qw1, post_qw2, post_kw1, post_kw2, post_qdd, post_kdd)
@@ -341,6 +353,7 @@ class MultiHeadDotProductAttention(nn.Module):
   # normalize_qk: bool = False
   dynamic_compose: bool = True  # XD
   is_cross_attention: bool = False  # XD
+  dynamic_dropout_rate: float = None
 
   def setup(self):
     self.head_dim = self.qkv_features // self.num_heads
@@ -373,6 +386,8 @@ class MultiHeadDotProductAttention(nn.Module):
             dynamic_squeeze_ratio=num_heads_per_group // I,
             dynamic_w_hidden_dim=dynamic_w_hidden_dim,
             dtype=self.dtype, param_dtype=self.param_dtype, precision=self.precision,
+            deterministic=self.deterministic,
+            dynamic_dropout_rate=self.dynamic_dropout_rate,
           ))
       else:
         self.dyn_w_proj = DynamicWeightProjection(
@@ -383,6 +398,8 @@ class MultiHeadDotProductAttention(nn.Module):
           dynamic_squeeze_ratio=num_heads_per_group // I,
           dynamic_w_hidden_dim=dynamic_w_hidden_dim,
           dtype=self.dtype, param_dtype=self.param_dtype, precision=self.precision,
+          deterministic=self.deterministic,
+          dynamic_dropout_rate=self.dynamic_dropout_rate,
         )
       for name in ['pre_proj', 'post_proj']:
         setattr(self, name, CrossHeadProjection(
@@ -711,7 +728,8 @@ class Encoder1DBlock(nn.Module):
         broadcast_dropout=False,
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
-        dynamic_compose=config.en_dynamic_compose
+        dynamic_compose=config.en_dynamic_compose,
+        dynamic_dropout_rate=config.dynamic_dropout_rate
     )
     self.dropout = nn.Dropout(rate=config.dropout_rate)
     self.post_norm = nn.LayerNorm(dtype=self.config.dtype)
@@ -767,7 +785,8 @@ class EncoderDecoder1DBlock(nn.Module):
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
         decode=config.decode,
-        dynamic_compose=config.de_dynamic_compose1 # # True
+        dynamic_compose=config.de_dynamic_compose1, # # True
+        dynamic_dropout_rate=config.dynamic_dropout_rate
     )
 
     self.encoder_decoder_dot_attn = MultiHeadDotProductAttention(
@@ -781,7 +800,8 @@ class EncoderDecoder1DBlock(nn.Module):
         dropout_rate=config.attention_dropout_rate,
         deterministic=config.deterministic,
         is_cross_attention=True,  # XD
-        dynamic_compose=config.de_dynamic_compose2 # True
+        dynamic_compose=config.de_dynamic_compose2, # True
+        dynamic_dropout_rate=config.dynamic_dropout_rate,
     )
 
     self.dropout = nn.Dropout(rate=config.dropout_rate)
