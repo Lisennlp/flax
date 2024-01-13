@@ -519,6 +519,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       decode=False,
       kernel_init=nn.initializers.xavier_uniform(),
       bias_init=nn.initializers.normal(stddev=1e-6),
+      en_dynamic_compose=config.en_dynamic_compose,
+      de_dynamic_compose1=config.de_dynamic_compose1,
+      de_dynamic_compose2=config.de_dynamic_compose2,
   )
   eval_config = train_config.replace(deterministic=True)
   predict_config = train_config.replace(deterministic=True, decode=True)

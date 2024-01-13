@@ -64,7 +64,9 @@ class TransformerConfig:
   kernel_init: Callable = nn.initializers.xavier_uniform()
   bias_init: Callable = nn.initializers.normal(stddev=1e-6)
   posemb_init: Optional[Callable] = None
-
+  en_dynamic_compose: bool = False
+  de_dynamic_compose1: bool = False
+  de_dynamic_compose2: bool = False
 
 def shift_right(x, axis=1):
   """Shift the input to the right by padding on axis 1."""
