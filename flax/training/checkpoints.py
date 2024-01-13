@@ -1084,7 +1084,13 @@ def restore_checkpoint(
     orbax_checkpointer.wait_until_finished()
 
   ckpt_dir = os.fspath(ckpt_dir)  # Pathlib -> str
+  logging.info(f'ckpt_dir: {ckpt_dir}')
   ckpt_dir = safe_normpath(ckpt_dir)
+  logging.info(f'ckpt_dir2: {ckpt_dir}')
+  logging.info(f'restore step: {step}')
+  logging.info(f'ckpt_dir: {ckpt_dir}')
+  logging.info(f'prefix: {prefix}')
+
   if step is not None:
     ckpt_path = _checkpoint_path(ckpt_dir, step, prefix)
     if not io.exists(ckpt_path):
@@ -1107,6 +1113,7 @@ def restore_checkpoint(
     else:
       ckpt_path = ckpt_dir
 
+  logging.info(f'restore ckpt_path: {ckpt_path}')
   # Restore the checkpoint with Orbax if needed.
   is_orbax = _is_orbax_checkpoint(ckpt_path)
   ckpt_type = 'orbax' if is_orbax else 'legacy Flax'

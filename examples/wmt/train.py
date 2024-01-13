@@ -560,9 +560,11 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
 
   # We access model params only via state.params
   del initial_variables
+  print(f'config.restore_checkpoints:: {config.restore_checkpoints:}')
   # 恢复训练
   if config.restore_checkpoints:
     # Restore unreplicated optimizer + model state from last checkpoint.
+
     state = checkpoints.restore_checkpoint(workdir, state)
     # Grab last step.
     start_step = int(state.step)
@@ -654,7 +656,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
         h(step)
 
       # Periodic metric handling.
-      if step % config.eval_every_steps == 0 or is_last_step:
+      if step != 0 and step % config.eval_every_steps == 0 or is_last_step:
         with report_progress.timed("training_metrics"):
           logging.info("Gathering training metrics.")
           train_metrics = common_utils.get_metrics(train_metrics)

@@ -36,6 +36,17 @@
     ZONE=us-east1-d
     gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="/home/lishengping/miniconda3/bin/python main.py --workdir=$WOKRDIR --config=configs/default.py $FLAGS"
 
-8:31:26.421486 140583692036096 train.py:433] Translation: 3003 predictions 3003 references 3003 sources.
-I0107 08:31:32.321709 140583692036096 train.py:700] Saving checkpoint step 2000.
-I0107 08:31:32.321915 140570526500608 logging_writer.py:35] [2000] bleu=22.656551
+### 训练
+# 测试tpu是否可用
+gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="sudo lsof -w /dev/accel0 |cut -c 9-14|awk 'NR>1 {print $1}'| xargs sudo kill -9; sudo rm -f /tmp/libtpu_lockfile;sudo chmod +777 -R /tmp/tpu_logs/;/home/lishengping/miniconda3/bin/python -c 'import jax; print(jax.devices())'"
+<!-- TPU_NAME=llm-jax-v3-32-10
+ZONE=us-east1-d -->
+TPU_NAME=llm-jax-v4-16-10
+ZONE=us-central2-b
+WOKRDIR=gs://jax_llm_data/dcformer_compare_experiments/logs/wmt_256/
+CODEDIR=/home/lishengping/projects/flax/examples/wmt
+# 安装flax
+gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="/home/lishengping/miniconda3/bin/pip  uninstall -y flax;cd projects/;git clone https://github.com/Lisennlp/flax.git; cd flax;/home/lishengping/miniconda3/bin/pip install -e ."
+gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="cd projects/flax/examples/wmt/;/home/lishengping/miniconda3/bin/pip install -r requirements.txt"
+# train
+gcloud compute tpus tpu-vm ssh $TPU_NAME --zone=$ZONE --worker=all --command="sudo lsof -w /dev/accel0 |cut -c 9-14|awk 'NR>1 {print $1}'| xargs sudo kill -9; sudo rm -f /tmp/libtpu_lockfile;sudo chmod +777 -R /tmp/tpu_logs/;export TFDS_DATA_DIR=gs://jax_llm_data/dcformer_compare_experiments/;/home/lishengping/miniconda3/bin/python $CODEDIR/main.py --workdir=$WOKRDIR --config=$CODEDIR/configs/default.py $FLAGS| tee train.log"

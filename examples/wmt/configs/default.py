@@ -98,9 +98,9 @@ def get_config():
   config.attention_dropout_rate = 0.1
 
   # Whether to save model checkpoints.
-  config.save_checkpoints = True
+  config.save_checkpoints = False
   # Whether to restore from existing model checkpoints.
-  config.restore_checkpoints = True
+  config.restore_checkpoints = False
 
   # Save a checkpoint every these number of steps.
   config.checkpoint_every_steps = 10_000
