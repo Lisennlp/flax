@@ -498,6 +498,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   logging.info("Initializing model, optimizer, and step functions.")
 
   dtype = preferred_dtype(config)
+  print(f'config: {config}')
 
   # Build Model and Optimizer
   # ---------------------------------------------------------------------------
