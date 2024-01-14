@@ -100,7 +100,7 @@ def get_config():
   # Whether to save model checkpoints.
   config.save_checkpoints = False
   # Whether to restore from existing model checkpoints.
-  config.restore_checkpoints = False
+  config.restore_checkpoints = True
 
   # Save a checkpoint every these number of steps.
   config.checkpoint_every_steps = 10_000
