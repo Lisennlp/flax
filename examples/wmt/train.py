@@ -485,7 +485,6 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       vocab_path=vocab_path,
   )
 
-  train_iter = iter(train_ds)
   vocab_size = int(encoder.vocab_size())
   eos_id = decode.EOS_ID  # Default Sentencepiece EOS token.
 
@@ -635,6 +634,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
     ]
   train_metrics = []
   start_time = time.time()
+  # lsp
+  train_ds = train_ds.skip(start_step)
+  train_iter = iter(train_ds)
+
   with metric_writers.ensure_flushes(writer):
     for step in range(start_step, config.num_train_steps):
       is_last_step = step == config.num_train_steps - 1
