@@ -636,7 +636,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   start_time = time.time()
   # lsp
   logging.info(f'skip_step: {start_step}=============')
-  train_ds = train_ds.skip(start_step)
+  # train_ds = train_ds.skip(start_step)
   train_iter = iter(train_ds)
 
   with metric_writers.ensure_flushes(writer):
