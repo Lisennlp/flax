@@ -544,6 +544,10 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       jnp.ones(target_shape, jnp.float32),
   )
 
+  if jax.process_index() == 0:
+    param_count = sum(x.size for x in jax.tree_leaves(initial_variables))
+    logging.info(f"Total parameters: {param_count}")
+
   # Create train state with Adam optimizer and weight decay.
   learning_rate_fn = create_learning_rate_schedule(
       learning_rate=config.learning_rate, warmup_steps=config.warmup_steps
