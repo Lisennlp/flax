@@ -355,7 +355,7 @@ class MultiHeadDotProductAttention(nn.Module):
   ] = nn.zeros_init()
   use_bias: bool = True
   decode: bool = False
-  # normalize_qk: bool = False
+  normalize_qk: bool = True
   dynamic_compose: bool = True  # XD
   is_cross_attention: bool = False  # XD
   dynamic_dropout_rate: float = None
@@ -580,8 +580,8 @@ class MultiHeadDotProductAttention(nn.Module):
     # key = key.reshape(bsz, length, self.num_heads, self.head_dim)
     # value = value.reshape(bsz, length, self.num_heads, self.head_dim)
 
-    # if self.normalize_qk:
-    if self.dynamic_compose:  # XD
+    if self.normalize_qk:
+    # if self.dynamic_compose:  # XD
       # Normalizing query and key projections stabilizes training with higher
       # LR. See ViT-22B paper http://arxiv.org/abs/2302.05442 for analysis.
       query = LayerNorm(name='query_ln', use_bias=False)(query)  # type: ignore[call-arg]
