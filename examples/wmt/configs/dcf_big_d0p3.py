@@ -82,14 +82,14 @@ def get_config():
   config.num_layers = 6
 
   # Size of query/key/value for attention.
-  config.qkv_dim = 768
+  config.qkv_dim = 1024
   # Size of embeddings.
-  config.emb_dim = 768
+  config.emb_dim = 1024
   # Size of the MLP.
-  config.mlp_dim = 3072
+  config.mlp_dim = 4096
 
   # Number of attention heads.
-  config.num_heads = 12
+  config.num_heads = 16
 
   # Dropout rate.
   config.dropout_rate = 0.3
