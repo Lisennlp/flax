@@ -278,7 +278,7 @@ def initialize_cache(inputs, max_decode_len, config):
   """Initialize a cache for a given input shape and max decode length."""
   target_shape = (inputs.shape[0], max_decode_len) + inputs.shape[2:]
   initial_variables = models.Transformer(config).init(
-      jax.random.key(0),
+      jax.random.PRNGKey(0),
       jnp.ones(inputs.shape, config.dtype),
       jnp.ones(target_shape, config.dtype),
   )
