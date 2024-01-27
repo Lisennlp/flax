@@ -45,6 +45,7 @@ import bleu
 import decode
 import input_pipeline
 import models
+from flax.traverse_util import flatten_dict, unflatten_dict, empty_node
 
 
 class TrainState(train_state.TrainState):
@@ -545,6 +546,9 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   )
 
   if jax.process_index() == 0:
+    flatten_dict_params = flatten_dict(initial_variables)
+    for k, v in flatten_dict_params.items():
+      logging.info(f'{k}: shape: {v.shape} size: {jnp.prod(v.shape)}')
     param_count = sum(x.size for x in jax.tree_leaves(initial_variables))
     logging.info(f"Total parameters: {param_count}")
 
