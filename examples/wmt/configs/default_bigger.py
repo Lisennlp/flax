@@ -25,7 +25,7 @@ def get_config():
   config.vocab_path = None
 
   # Vocabulary size if `vocab_path` is not given.
-  config.vocab_size = 32_000
+  config.vocab_size = 37_000
 
   config.max_corpus_chars = 10**7
 
@@ -79,17 +79,17 @@ def get_config():
   config.logits_via_embedding = True
 
   # Number of transformer layers.
-  config.num_layers = 8
+  config.num_layers = 6
 
   # Size of query/key/value for attention.
-  config.qkv_dim = 1280
+  config.qkv_dim = 1408
   # Size of embeddings.
-  config.emb_dim = 1280
+  config.emb_dim = 1408
   # Size of the MLP.
-  config.mlp_dim = 5120
+  config.mlp_dim = 1408*4
 
   # Number of attention heads.
-  config.num_heads = 16
+  config.num_heads = 22
 
   # Dropout rate.
   config.dropout_rate = 0.1
