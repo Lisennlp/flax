@@ -37,7 +37,7 @@ def get_config():
   config.eval_split = 'test'
 
   # Reverse the direction of translation.
-  config.reverse_translation = False
+  config.reverse_translation = True
 
   # Per device batch size for training.
   config.per_device_batch_size = 32
