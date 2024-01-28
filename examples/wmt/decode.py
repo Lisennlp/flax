@@ -271,8 +271,9 @@ def beam_search(
       logits = logits / t
       # lsp: [batch, 1]
       sample_id = jax.random.categorical(jax.random.PRNGKey(0), logits, axis=-1)
-      logits = logits.at[sample_id] = POS_INF
-      
+      first_indices = jnp.arange(len(sample_id))
+      logits[first_indices, sample_id] = POS_INF
+
     candidate_log_probs = jax.nn.log_softmax(logits)
 
     # Add new logprobs to existing prefix logprobs.
