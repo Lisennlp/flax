@@ -355,7 +355,7 @@ class MultiHeadDotProductAttention(nn.Module):
   ] = nn.zeros_init()
   use_bias: bool = True
   decode: bool = False
-  normalize_qk: bool = True
+  normalize_qk: bool = False
   dynamic_compose: bool = True  # XD
   is_cross_attention: bool = False  # XD
   dynamic_dropout_rate: float = None
