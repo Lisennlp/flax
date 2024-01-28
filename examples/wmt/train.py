@@ -624,7 +624,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       static_broadcasted_argnums=(3, 4),
   )  # eos token, max_length are constant
 
-  if config.beam_size == 1 and config.sample:
+  if config.beam_size == 1 or config.sample:
     exemplars, bleu_score = translate_and_calculate_bleu(
           p_pred_step=p_pred_step,
           p_init_cache=p_init_cache,
