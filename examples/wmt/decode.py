@@ -22,6 +22,7 @@ from jax import lax
 import jax.numpy as jnp
 import numpy as np
 
+from absl import logging
 
 # Constants
 # We assume the default End-of-Sentence token id is 2 (SentencePiece).
@@ -268,6 +269,7 @@ def beam_search(
     # Gather log probabilities from logits
     # candidate_log_probs = jax.nn.log_softmax(logits)
     if beam_size == 1:
+      logging.info(f'User sample to generate......')
       logits = logits / t
       # lsp: [batch, 1]
       sample_id = jax.random.categorical(jax.random.PRNGKey(0), logits, axis=-1)
