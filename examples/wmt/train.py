@@ -616,11 +616,23 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   )
   p_pred_step = jax.pmap(
       functools.partial(
-          predict_step, config=predict_config, beam_size=config.beam_size
+          predict_step, config=predict_config, beam_size=config.beam_size, t=config.T
       ),
       axis_name="batch",
       static_broadcasted_argnums=(3, 4),
   )  # eos token, max_length are constant
+
+  if config.beam_size > 1:
+    exemplars, bleu_score = translate_and_calculate_bleu(
+          p_pred_step=p_pred_step,
+          p_init_cache=p_init_cache,
+          params=state.params,
+          predict_ds=predict_ds,
+          decode_tokens=decode_tokens,
+          max_predict_length=config.max_predict_length,
+      )
+    logging.info(f"Checkpoint {start_step} bleu score: {bleu_score} beam size: {config.beam_size} temperature: {config.T}")
+    exit(0)
 
   # Main Train Loop
   # ---------------------------------------------------------------------------
