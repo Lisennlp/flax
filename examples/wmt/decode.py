@@ -28,6 +28,7 @@ import numpy as np
 EOS_ID = 2
 # "Effective negative infinity" constant for masking in beam search.
 NEG_INF = np.array(-1.0e7)
+POS_INF = np.array(1.0e7)
 
 
 def brevity_penalty(alpha, length):
@@ -180,6 +181,7 @@ def beam_search(
     alpha=0.6,
     eos_id=EOS_ID,
     max_decode_len=None,
+    t=1.0
 ):
   """Beam search for transformer machine translation.
 
@@ -262,9 +264,16 @@ def beam_search(
     new_cache = jax.tree_util.tree_map(
         lambda x: unflatten_beam_dim(x, batch_size, beam_size), new_flat_cache
     )
-
+    
     # Gather log probabilities from logits
+    # candidate_log_probs = jax.nn.log_softmax(logits)
+
+    logits = logits / t
+    # lsp: [batch, 1]
+    sample_id = jax.random.categorical(jax.random.PRNGKey(0), logits, axis=-1)
+    logits = logits.at[sample_id] = POS_INF
     candidate_log_probs = jax.nn.log_softmax(logits)
+
     # Add new logprobs to existing prefix logprobs.
     # --> [batch, beam, vocab]
     log_probs = candidate_log_probs + jnp.expand_dims(
@@ -283,12 +292,12 @@ def beam_search(
     # Flatten beam and vocab dimensions.
     flat_log_probs = log_probs.reshape((batch_size, beam_size * vocab_size))
     # Gather the top 2*K scores from _all_ beams.
-    # --> [batch, 2*beams], [batch, 2*beams]
+    # --> [batch, 2*beams], [batch, 2*beams]， 取了2倍的beam size
     topk_log_probs, topk_indices = lax.top_k(flat_log_probs, k=beams_to_keep)
     # Recover the beam index by floor division.
     topk_beam_indices = topk_indices // vocab_size
     # Gather 2*k top beams.
-    # --> [batch, 2*beams, length]
+    # --> [batch, 2*beams, length]  lsp: [batch, 1, length]
     topk_seq = gather_beams(
         state.live_seqs, topk_beam_indices, batch_size, beams_to_keep
     )
@@ -298,21 +307,21 @@ def beam_search(
     # --> [batch, 2*beams, 1]
     topk_ids = jnp.expand_dims(topk_indices % vocab_size, axis=2)
     # Update sequences for the 2*K top-k new sequences.
-    # --> [batch, 2*beams, length]
+    # --> [batch, 2*beams, length]  lsp: [batch, 1, length]
     topk_seq = lax.dynamic_update_slice(
         topk_seq, topk_ids, (0, 0, state.cur_index + 1)
     )
 
     # Update LIVE (in-progress) sequences:
     # Did any of these sequences reach an end marker?
-    # --> [batch, 2*beams]
+    # --> [batch, 2*beams], lsp: [batch, 1]
     newly_finished = topk_seq[:, :, state.cur_index + 1] == end_marker
     # To prevent these newly finished sequences from being added to the LIVE
     # set of active beam search sequences, set their log probs to a very large
     # negative value.
     new_log_probs = topk_log_probs + newly_finished * NEG_INF
     # Determine the top k beam indices (from top 2*k beams) from log probs.
-    # --> [batch, beams]
+    # --> [batch, beams], lsp: [batch, 1]
     _, new_topk_indices = lax.top_k(new_log_probs, k=beam_size)
     new_topk_indices = jnp.flip(new_topk_indices, axis=1)
     # Gather the top k beams (from top 2*k beams).

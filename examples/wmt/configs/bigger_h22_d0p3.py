@@ -118,6 +118,7 @@ def get_config():
   config.de_dynamic_compose1 = False
   config.de_dynamic_compose2 = False
   config.dynamic_dropout_rate = 0.3
+  config.T = 1.0
 
   return config
 
