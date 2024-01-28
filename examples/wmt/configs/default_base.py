@@ -92,10 +92,10 @@ def get_config():
   config.num_heads = 12
 
   # Dropout rate.
-  config.dropout_rate = 0.1
+  config.dropout_rate = 0.2
 
   # Attention dropout rate.
-  config.attention_dropout_rate = 0.1
+  config.attention_dropout_rate = 0.2
 
   # Whether to save model checkpoints.
   config.save_checkpoints = False
@@ -117,7 +117,7 @@ def get_config():
   config.en_dynamic_compose = False
   config.de_dynamic_compose1 = False
   config.de_dynamic_compose2 = False
-  config.dynamic_dropout_rate = 0.0
+  config.dynamic_dropout_rate = 0.2
 
   config.T = 1.0
 
