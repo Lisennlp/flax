@@ -120,6 +120,7 @@ def get_config():
   config.dynamic_dropout_rate = 0.2
 
   config.T = 1.0
+  config.sample = False
 
   return config
 

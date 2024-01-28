@@ -286,7 +286,7 @@ def initialize_cache(inputs, max_decode_len, config):
 
 
 def predict_step(
-    inputs, params, cache, eos_id, max_decode_len, config, beam_size=4, t=1.0
+    inputs, params, cache, eos_id, max_decode_len, config, beam_size=4, t=1.0, sample=False
 ):
   """Predict translation with fast decoding beam search on a batch."""
   # Prepare transformer fast-decoder call for beam search: for beam search, we
@@ -331,6 +331,7 @@ def predict_step(
       eos_id=eos_id,
       max_decode_len=max_decode_len,
       t=t,
+      sample=sample,
   )
 
   # Beam search returns [n_batch, n_beam, n_length + 1] with beam dimension
@@ -617,13 +618,13 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
   )
   p_pred_step = jax.pmap(
       functools.partial(
-          predict_step, config=predict_config, beam_size=config.beam_size, t=config.T
+          predict_step, config=predict_config, beam_size=config.beam_size, t=config.T, sample=config.sample
       ),
       axis_name="batch",
       static_broadcasted_argnums=(3, 4),
   )  # eos token, max_length are constant
 
-  if config.beam_size == 1:
+  if config.beam_size == 1 and config.sample:
     exemplars, bleu_score = translate_and_calculate_bleu(
           p_pred_step=p_pred_step,
           p_init_cache=p_init_cache,

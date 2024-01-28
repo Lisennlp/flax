@@ -182,7 +182,8 @@ def beam_search(
     alpha=0.6,
     eos_id=EOS_ID,
     max_decode_len=None,
-    t=1.0
+    t=1.0,
+    sample=False,
 ):
   """Beam search for transformer machine translation.
 
@@ -268,7 +269,7 @@ def beam_search(
     
     # Gather log probabilities from logits
     # candidate_log_probs = jax.nn.log_softmax(logits)
-    if beam_size == 1:
+    if beam_size == 1 and sample:
       logging.info(f'User sample to generate......')
       logits = logits / t
       # lsp: [batch, 1]
@@ -294,7 +295,7 @@ def beam_search(
     # remaining to continue the live beam search.
     # beams_to_keep = 2 * beam_size
     # lsp
-    if beam_size == 1:
+    if beam_size == 1 and sample:
       beams_to_keep = 1
     else:
       beams_to_keep = 2 * beam_size
