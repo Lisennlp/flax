@@ -294,7 +294,10 @@ def beam_search(
     # remaining to continue the live beam search.
     # beams_to_keep = 2 * beam_size
     # lsp
-    beams_to_keep = 1 * beam_size
+    if beam_size == 1:
+      beams_to_keep = 1
+    else:
+      beams_to_keep = 2 * beam_size
     # Flatten beam and vocab dimensions.
     flat_log_probs = log_probs.reshape((batch_size, beam_size * vocab_size))
     # Gather the top 2*K scores from _all_ beams.
